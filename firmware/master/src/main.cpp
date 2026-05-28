@@ -5,13 +5,14 @@
  */
 
 #include <WiFi.h>
+#include <secrets.h>
 #include <esp_now.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
 // ================= USER CONFIGURATION =================
-const char* WIFI_SSID = "Kiscsillag";
-const char* WIFI_PASS = "19871988";
+const char* WIFI_SSID = WIFI_SSID;
+const char* WIFI_PASS = WIFI_PASSWORD;
 
 // ThingsBoard MQTT Settings
 // #define THINGSBOARD_SERVER "mqtt.thingsboard.cloud"  

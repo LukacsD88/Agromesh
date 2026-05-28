@@ -6,6 +6,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <secrets.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <Wire.h>
@@ -20,7 +21,8 @@
 // #define DEBUG_MODE  
 
 uint8_t masterMac[] = {0xD4, 0xE9, 0xF4, 0xA4, 0xD8, 0x50}; 
-#define WIFI_SSID "Kiscsillag" 
+#define WIFI_SSID WIFI_SSID
+#define WIFI_PASSWORD WIFI_PASSWORD
 
 #ifdef DEBUG_MODE
   #define CYCLE_DELAY_MS 5000  
