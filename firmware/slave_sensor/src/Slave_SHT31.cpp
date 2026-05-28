@@ -35,7 +35,7 @@ uint8_t masterMac[] = {0xD4, 0xE9, 0xF4, 0xA4, 0xD8, 0x50};
 #define PIN_SOIL_ADC  3
 #define PIN_LED       8  // Safe to use now!
 
-#define SHT31_ADDR    0x44
+#define SHT31_ADDR    0x44 //Sample comment: 0x44 or 0x45 depending on ADDR pin
 #define HUMIDITY_SATURATION_THRESHOLD 95.0 
 
 // ================= OBJECTS =================

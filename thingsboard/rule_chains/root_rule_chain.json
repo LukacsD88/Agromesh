@@ -188,7 +188,7 @@
         "queueName": null,
         "configurationVersion": 3,
         "configuration": {
-          "restEndpointUrlPattern": "https://api.telegram.org/bot8522132292:AAHYCm_NrWrJ4wL8z92p5ftcmhQ9Ee37J2I/sendMessage",
+          "restEndpointUrlPattern": "https://api.telegram.org/bot8522132292:<INSERT_YOUR_TOKEN_HERE>sendMessage",
           "requestMethod": "POST",
           "useSimpleClientHttpFactory": false,
           "parseToPlainText": false,
