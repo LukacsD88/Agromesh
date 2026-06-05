@@ -11,8 +11,11 @@
 #include <ArduinoJson.h>
 
 // ================= USER CONFIGURATION =================
-const char* WIFI_SSID = WIFI_SSID;
-const char* WIFI_PASS = WIFI_PASSWORD;
+//const char* WIFI_SSID = WIFI_SSID;
+//const char* WIFI_PASS = WIFI_PASSWORD;
+
+#define WIFI_SSID WIFI_SSID
+#define WIFI_PASS WIFI_PASSWORD
 
 // ThingsBoard MQTT Settings
 // #define THINGSBOARD_SERVER "mqtt.thingsboard.cloud"  
@@ -37,6 +40,7 @@ typedef struct __attribute__((packed)) struct_message {
   int soilMoisture;
   float batteryVolts; // (Optional, if you calculate it on slave)
   int status_code;    
+  int batteryPercent;
 } struct_message;
 
 struct_message incomingData;
@@ -155,11 +159,16 @@ void loop() {
     String keyHum  = String(prefix) + "Hum";
     String keySoil = String(prefix) + "SoilT";
     String keyMoist= String(prefix) + "Moist";
+    String keyBatV = String(prefix) + "BatV";
+    String keyBatP = String(prefix) + "BatP";
 
-    doc[keyTemp]  = currentMsg.tempAir;
-    doc[keyHum]   = currentMsg.humAir;
-    doc[keySoil]  = currentMsg.tempSoil;
+    // Use serialized() to perfectly format floats to 2 decimal places in JSON
+    doc[keyTemp]  = serialized(String(currentMsg.tempAir, 2));
+    doc[keyHum]   = serialized(String(currentMsg.humAir, 2));
+    doc[keySoil]  = serialized(String(currentMsg.tempSoil, 2));
     doc[keyMoist] = currentMsg.soilMoisture;
+    doc[keyBatV]  = serialized(String(currentMsg.batteryVolts, 2));
+    doc[keyBatP]  = currentMsg.batteryPercent;
 
     char jsonBuffer[512];
     serializeJson(doc, jsonBuffer);

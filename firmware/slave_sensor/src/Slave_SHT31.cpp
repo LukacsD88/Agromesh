@@ -27,7 +27,7 @@ uint8_t masterMac[] = {0xD4, 0xE9, 0xF4, 0xA4, 0xD8, 0x50};
 #ifdef DEBUG_MODE
   #define CYCLE_DELAY_MS 5000  
 #else
-  #define SLEEP_SECONDS 20     
+  #define SLEEP_SECONDS 20 
 #endif
 
 // --- PINS (UPDATED) ---
@@ -35,6 +35,7 @@ uint8_t masterMac[] = {0xD4, 0xE9, 0xF4, 0xA4, 0xD8, 0x50};
 #define PIN_SCL       7  // Moved from 9 to 7
 #define PIN_DS18B20   10        
 #define PIN_SOIL_ADC  3
+#define PIN_BATTERY_ADC 1 // Added for Battery Voltage reading
 #define PIN_LED       8  // Safe to use now!
 
 #define SHT31_ADDR    0x44 //Sample comment: 0x44 or 0x45 depending on ADDR pin
@@ -56,6 +57,7 @@ typedef struct __attribute__((packed)) struct_message {
   int soilMoisture;   
   float batteryVolts; 
   int status_code;    
+  int batteryPercent; 
 } struct_message;
 
 struct_message myData;
@@ -102,10 +104,59 @@ void setupEspNow(int channel) {
   esp_now_add_peer(&peerInfo);
 }
 
+// ================= BATTERY READING =================
+float readBatteryVoltage() {
+  // Force ADC to use full range (11dB = up to ~2.5V - 3.1V range)
+  analogSetPinAttenuation(PIN_BATTERY_ADC, ADC_11db);
+
+  uint32_t totalMv = 0;
+  uint32_t highest = 0;
+  uint32_t lowest = 9999;
+  const int numSamples = 256; 
+
+  // Throwaway the first 5 reads to let the internal ADC stabilize
+  for(int i=0; i<5; i++) {
+    analogReadMilliVolts(PIN_BATTERY_ADC);
+    delay(2);
+  }
+
+  // Take 256 quick readings to crush the noise
+  for (int i = 0; i < numSamples; i++) {
+      uint32_t mv = analogReadMilliVolts(PIN_BATTERY_ADC);
+      if (mv < lowest) lowest = mv;
+      if (mv > highest) highest = mv;
+      totalMv += mv;
+      delay(1); 
+  }
+
+  // Remove the single highest and lowest noise spikes, then average
+  totalMv = totalMv - highest - lowest;
+  float avgMv = (float)totalMv / (numSamples - 2);
+  float pinVoltage = avgMv / 1000.0;
+
+  // Reverting to the proven 9.293 multiplier that provided the most stable values
+  const float CALIBRATION_MULTIPLIER = 9.293; 
+  float finalVoltage = pinVoltage * CALIBRATION_MULTIPLIER;
+  
+  // Round to 2 decimal places to hide the remaining microscopic hardware jitter
+  return round(finalVoltage * 100.0) / 100.0;
+}
+
+// Convert voltage to a 0-100% scale (LiPo standard 3.3V - 4.2V)
+int getBatteryPercentage(float voltage) {
+  if (voltage >= 4.20) return 100;
+  if (voltage <= 3.30) return 0;
+  return (int)((voltage - 3.30) / (4.20 - 3.30) * 100.0);
+}
+
 // ================= SETUP =================
 void setup() {
   Serial.begin(115200);
   delay(100); 
+  
+  // Read battery FIRST, before turning on the LED or WiFi to avoid noise
+  myData.batteryVolts = readBatteryVoltage();
+  myData.batteryPercent = getBatteryPercentage(myData.batteryVolts);
   
   // LED Init
   pixels.begin();
@@ -181,7 +232,6 @@ void loop() {
       // ID & Boot Count
       uint64_t chipid = ESP.getEfuseMac();
       myData.id = (uint16_t)(chipid >> 32);
-      myData.batteryVolts = 0.0; 
       
       #ifdef DEBUG_MODE
         boot_count++; 
@@ -265,6 +315,12 @@ void loop() {
         currentState = STATE_READ_SENSORS;
       #else
         Serial.flush(); 
+        
+        // Cleanly shut down the radio to prevent crashes during sleep
+        esp_now_deinit();
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+        
         esp_sleep_enable_timer_wakeup(SLEEP_SECONDS * 1000000ULL);
         esp_deep_sleep_start();
       #endif
