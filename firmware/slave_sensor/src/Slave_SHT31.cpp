@@ -14,13 +14,17 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <Adafruit_NeoPixel.h> 
+#include <Preferences.h> // Added for NVS (Non-Volatile Storage)
 
 // ================= USER CONFIGURATION =================
 
 // UNCOMMENT FOR DEBUGGING (NO SLEEP)
 // #define DEBUG_MODE  
 
-uint8_t masterMac[] = {0xD4, 0xE9, 0xF4, 0xA4, 0xD8, 0x50}; 
+// Master MAC is now dynamically paired and stored!
+uint8_t masterMac[6] = {0}; 
+Preferences preferences;
+
 #define WIFI_SSID WIFI_SSID
 #define WIFI_PASSWORD WIFI_PASSWORD
 
@@ -66,6 +70,7 @@ RTC_DATA_ATTR int savedChannel = 1;
 RTC_DATA_ATTR uint32_t boot_count = 0;
 
 enum State {
+  STATE_PAIRING, // New state for Proximity Auto-Discovery
   STATE_INIT,
   STATE_READ_SENSORS,
   STATE_TRANSMIT,
@@ -74,7 +79,7 @@ enum State {
   STATE_ERROR
 };
 
-State currentState = STATE_INIT;
+State currentState;
 esp_now_peer_info_t peerInfo;
 volatile bool deliverySuccess = false;
 
@@ -166,10 +171,17 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
   
+  // NVS MAC Load: Check if we have already paired to a Master in a previous life
+  preferences.begin("agromesh", false);
+  if (preferences.getBytesLength("masterMac") == 6) {
+    preferences.getBytes("masterMac", masterMac, 6);
+    currentState = STATE_INIT; // Skip pairing, go straight to work
+  } else {
+    currentState = STATE_PAIRING; // Factory fresh, wait for physical proximity
+  }
+
   if (esp_now_init() != ESP_OK) ESP.restart();
   esp_now_register_send_cb(OnDataSent);
-
-  currentState = STATE_INIT;
   
   #ifdef DEBUG_MODE
     Serial.println("DEBUG MODE");
@@ -180,6 +192,49 @@ void setup() {
 void loop() {
   
   switch (currentState) {
+
+    // --- 0. PROXIMITY PAIRING (Gatekeeper Logic) ---
+    case STATE_PAIRING:
+    {
+      setLed(0, 0, 50); // Pulsing Blue: Waiting for proximity pair
+      
+      int n = WiFi.scanNetworks(false, true); // true = show hidden networks
+      bool paired = false;
+      
+      for (int i = 0; i < n; i++) {
+        String ssid = WiFi.SSID(i);
+        if (ssid.startsWith("AgroMesh-")) {
+          int rssi = WiFi.RSSI(i);
+          Serial.printf("Master Found! RSSI: %d\n", rssi);
+          
+          // Proximity Gatekeeper: Signal must be intensely strong (> -45 dBm = physical touch)
+          if (rssi >= -45) {
+            // Extract the true STA MAC from the SSID (e.g. "AgroMesh-4C11AE6D2E68")
+            String macHex = ssid.substring(9);
+            for(int j = 0; j < 6; j++) {
+              masterMac[j] = (uint8_t) strtol(macHex.substring(j*2, j*2+2).c_str(), NULL, 16);
+            }
+            
+            preferences.putBytes("masterMac", masterMac, 6); // Save permanently to NVS
+            savedChannel = WiFi.channel(i);                // Save current channel
+            
+            paired = true;
+            setLed(0, 50, 0); // Solid Green: Successfully Paired!
+            delay(2000);
+            currentState = STATE_INIT;
+            break;
+          } else {
+            Serial.println("Signal too weak! Move Slave closer to Master.");
+            setLed(50, 0, 0); // Quick Red flash: Denied
+            delay(1000);
+          }
+        }
+      }
+      
+      WiFi.scanDelete();
+      if (!paired) delay(1000); // Loop again until physically touched
+      break;
+    }
     
     // --- 1. INITIALIZATION ---
     case STATE_INIT:

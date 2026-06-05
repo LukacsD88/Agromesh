@@ -9,13 +9,10 @@
 #include <esp_now.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <WiFiManager.h> // Added for Captive Portal
 
 // ================= USER CONFIGURATION =================
-//const char* WIFI_SSID = WIFI_SSID;
-//const char* WIFI_PASS = WIFI_PASSWORD;
-
-#define WIFI_SSID WIFI_SSID
-#define WIFI_PASS WIFI_PASSWORD
+// Wi-Fi credentials removed! Managed securely by WiFiManager Captive Portal.
 
 // ThingsBoard MQTT Settings
 // #define THINGSBOARD_SERVER "mqtt.thingsboard.cloud"  
@@ -56,15 +53,35 @@ PubSubClient client(espClient);
 
 void setupWifi() {
   delay(10);
-  Serial.print("Connecting to Wi-Fi: ");
-  Serial.println(WIFI_SSID);
+  Serial.println("Starting Wi-Fi Manager...");
 
-  WiFi.mode(WIFI_AP_STA); // AP_STA mode is often more stable for ESP-NOW + WiFi
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFiManager wm;
+  
+   //wm.resetSettings(); // Ensure this is COMMENTED OUT for normal operation!
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // --- CAPTIVE PORTAL CUSTOMIZATION ---
+  // Inject custom CSS to make it look like a professional commercial product
+  String customCss = "<style>"
+                     "body { background-color: #f4f9f4; font-family: 'Segoe UI', Tahoma, sans-serif; color: #333; }"
+                     "button, input[type='submit'], .btn { background-color: #2e7d32 !important; color: white !important; border-radius: 8px; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; transition: 0.3s; }"
+                     "button:hover, input[type='submit']:hover, .btn:hover { background-color: #1b5e20 !important; cursor: pointer; transform: scale(1.02); }"
+                     ".wrap { border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); background-color: #ffffff; padding: 30px; max-width: 400px; margin: 40px auto; border-top: 6px solid #2e7d32; }"
+                     "h1 { color: #2e7d32; font-size: 26px; font-weight: 800; text-align: center; margin-bottom: 20px; }"
+                     "input[type='text'], input[type='password'] { border-radius: 6px; border: 1px solid #ccc; padding: 12px; width: 100%; box-sizing: border-box; margin-bottom: 15px; font-size: 16px; }"
+                     ".msg { color: #2e7d32; font-weight: bold; }"
+                     "</style>";
+                     
+  wm.setCustomHeadElement(customCss.c_str());
+  
+  // Clean up the menu to only show what a commercial user needs
+  std::vector<const char *> menu = {"wifi", "info", "restart"};
+  wm.setMenu(menu);
+
+  // Spins up "Agro-Mesh Setup" AP if no known networks are found
+  if(!wm.autoConnect("Agro-Mesh Setup")) {
+    Serial.println("Failed to connect to Wi-Fi. Restarting...");
+    delay(3000);
+    ESP.restart();
   }
 
   Serial.println("\nWi-Fi Connected!");
@@ -72,8 +89,14 @@ void setupWifi() {
   Serial.print("MAC Address: "); Serial.println(WiFi.macAddress());
   Serial.print("Channel: "); Serial.println(WiFi.channel());
   
-  // CRITICAL: ESP-NOW must use the SAME channel as the Wi-Fi connection
-  // The Slave nodes must scan to find this channel or match it.
+  // START PAIRING BEACON (Visible):
+  // The beacon must be visible (not hidden) so the Slave can read its SSID.
+  // We embed the Master's true STA MAC directly into the SSID.
+  String macStr = WiFi.macAddress();
+  macStr.replace(":", "");
+  String beaconSSID = "AgroMesh-" + macStr;
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(beaconSSID.c_str(), "agromesh123", WiFi.channel(), 0); // 0 = Visible
 }
 
 void reconnectMqtt() {
